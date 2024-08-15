@@ -198,7 +198,6 @@ class QmtData:
         end_time: str,
         stock_list: list = None,
         period: str = "1m",
-        n_jobs: int = 10,
     ):
         if stock_list is None:
             stock_list = self.get_tickers()["ticker"].tolist()
@@ -218,7 +217,7 @@ class QmtData:
 
         return list(
             tqdm(
-                compute(*delayed_tasks, scheduler="processes", num_workers=n_jobs),
+                compute(*delayed_tasks, scheduler="processes"),
                 total=len(stock_list),
             )
         )
