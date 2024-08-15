@@ -2,8 +2,8 @@ from xtquant import xtdata
 import pandas as pd
 from tqdm import tqdm
 import os
-from joblib import Parallel, delayed
 import akshare as ak
+from dask import delayed, compute
 
 tool_trade_date_hist_sina_df = ak.tool_trade_date_hist_sina()
 TRADE_DATE_LIST = tool_trade_date_hist_sina_df["trade_date"].tolist()
@@ -202,14 +202,25 @@ class QmtData:
     ):
         if stock_list is None:
             stock_list = self.get_tickers()["ticker"].tolist()
-        return Parallel(n_jobs=n_jobs)(
+
+        # Wrap the function calls with dask.delayed
+        delayed_tasks = [
             delayed(self.write_to_ftr)(
                 stock_code=ticker,
                 start_time=start_time,
                 end_time=end_time,
                 period=period,
             )
-            for ticker in tqdm(stock_list)
+            for ticker in stock_list
+        ]
+
+        # Execute the tasks in parallel with tqdm for progress tracking
+
+        return list(
+            tqdm(
+                compute(*delayed_tasks, scheduler="processes", num_workers=n_jobs),
+                total=len(stock_list),
+            )
         )
 
 
