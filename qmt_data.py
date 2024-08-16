@@ -3,10 +3,12 @@ import pandas as pd
 from tqdm import tqdm
 import os
 import akshare as ak
-from dask import delayed, compute
+from joblib import Parallel, delayed
 
 tool_trade_date_hist_sina_df = ak.tool_trade_date_hist_sina()
 TRADE_DATE_LIST = tool_trade_date_hist_sina_df["trade_date"].tolist()
+xtdata.enable_hello = False
+xtdata.connect()
 
 
 def check_missing_mintues_decorator(func):
@@ -24,19 +26,11 @@ def check_missing_mintues_decorator(func):
 def check_missing_dates_decorator(func):
     def wrapper(*args, **kwargs):
         df = func(*args, **kwargs)
-        if df.empty:
-            raise ValueError(f"{df.ticker_symbol.tolist()[0]}数据为空")
         trade_date_list = df.date.unique().tolist()
         trade_date_list.sort()
-        temp_check_list = TRADE_DATE_LIST[
-            TRADE_DATE_LIST.index(trade_date_list[0]) : TRADE_DATE_LIST.index(
-                trade_date_list[-1]
-            )
-            + 1
-        ]
-        minutes_list = list(set(temp_check_list) - set(trade_date_list))
-        if minutes_list:
-            raise ValueError(f"缺失数据日期: {minutes_list}")
+        missing_list = [dt for dt in trade_date_list if dt not in TRADE_DATE_LIST]
+        if missing_list:
+            raise ValueError(f"缺失数据日期: {missing_list}")
         return df
 
     return wrapper
@@ -48,8 +42,7 @@ class QmtData:
     """
 
     def __init__(self):
-        xtdata.enable_hello = False
-        xtdata.connect()
+        pass
 
     def get_tickers(self, needed_sector_list: list = None):
         if needed_sector_list is None:
@@ -87,7 +80,6 @@ class QmtData:
             tqdm.write(f"Downloaded data for {stock_code}")
 
     @check_missing_dates_decorator
-    @check_missing_mintues_decorator
     def get_local_data(
         self,
         start_time: str,
@@ -198,12 +190,14 @@ class QmtData:
         end_time: str,
         stock_list: list = None,
         period: str = "1m",
+        n_jobs: int = -1,
     ):
         if stock_list is None:
             stock_list = self.get_tickers()["ticker"].tolist()
 
-        # Wrap the function calls with dask.delayed
-        delayed_tasks = [
+        # Execute the tasks in parallel with tqdm for progress tracking
+
+        return Parallel(n_jobs=n_jobs)(
             delayed(self.write_to_ftr)(
                 stock_code=ticker,
                 start_time=start_time,
@@ -211,34 +205,32 @@ class QmtData:
                 period=period,
             )
             for ticker in stock_list
-        ]
-
-        # Execute the tasks in parallel with tqdm for progress tracking
-
-        return list(
-            tqdm(
-                compute(*delayed_tasks, scheduler="processes"),
-                total=len(stock_list),
-            )
         )
 
 
 if __name__ == "__main__":
     qmt_data = QmtData()
-    ticker_df = qmt_data.get_tickers()
-    stock_list = ticker_df["ticker"].tolist()
-    start_time = "20240810"
+    ticker_df = qmt_data.get_tickers(["沪深基金"])
+    stock_list = ["159941.SZ"]
+    start_time = "20100101"
     end_time = "20240815"
-    period = "1m"
-    # qmt_data.download_data(
-    #     start_time=start_time,
-    #     end_time=end_time,
-    #     period=period,
-    # )
+    period = "1d"
+    qmt_data.download_data(
+        start_time=start_time, end_time=end_time, period=period, stock_list=stock_list
+    )
     record = qmt_data.write_to_ftr_parallel(
-        start_time=start_time, end_time=end_time, period=period
+        stock_list=stock_list,
+        start_time=start_time,
+        end_time=end_time,
+        period=period,
     )
     record_df = pd.DataFrame(record)
+    os.makedirs(
+        "D:/qmt_datadir/logging/",
+        exist_ok=True,
+    )
     record_df.to_excel(
-        f"D:/qmt_datadir/logging/{end_time}_record__{period}.xlsx", index=False
+        f"D:/qmt_datadir/logging/{end_time}_record_{period}.xlsx",
+        index=False,
+        engine="openpyxl",
     )
