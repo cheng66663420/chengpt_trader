@@ -1,14 +1,17 @@
+import dask.delayed
 from xtquant import xtdata
 import pandas as pd
 from tqdm import tqdm
 import os
 import akshare as ak
-from joblib import Parallel, delayed
+import dask
+from dask.distributed import Client
+from dask.diagnostics import ProgressBar
+import psutil
 
 tool_trade_date_hist_sina_df = ak.tool_trade_date_hist_sina()
 TRADE_DATE_LIST = tool_trade_date_hist_sina_df["trade_date"].tolist()
 xtdata.enable_hello = False
-xtdata.connect()
 
 
 def check_missing_mintues_decorator(func):
@@ -42,7 +45,32 @@ class QmtData:
     """
 
     def __init__(self):
-        pass
+        self.filed_list = [
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "amount",
+            "settelementPrice",
+            "openInterest",
+            "preClose",
+            "suspendFlag",
+        ]
+        self.col_need = [
+            "trade_time",
+            "ticker_symbol",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "amount",
+            "settelement_price",
+            "open_interest",
+            "preclose",
+            "suspend_flag",
+        ]
 
     def get_tickers(self, needed_sector_list: list = None):
         if needed_sector_list is None:
@@ -79,6 +107,18 @@ class QmtData:
             )
             tqdm.write(f"Downloaded data for {stock_code}")
 
+    def __change_local_data_dict_into_df(self, data_dict: dict) -> pd.DataFrame:
+        result = []
+        for key, df in data_dict.items():
+            df_temp = df.copy().reset_index()
+            df_temp.rename(columns={"index": "trade_time"}, inplace=True)
+            df_temp["trade_time"] = pd.to_datetime(df_temp["trade_time"])
+            df_temp["ticker_symbol"] = key
+            df_temp["date"] = df_temp["trade_time"].dt.date
+            df_temp["year_month"] = df_temp["trade_time"].dt.strftime("%Y%m")
+            result.append(df_temp)
+        return pd.concat(result)
+
     @check_missing_dates_decorator
     def get_local_data(
         self,
@@ -87,34 +127,16 @@ class QmtData:
         stock_code: str,
         period: str = "1m",
     ):
+        if period not in ["1m", "5m", "1d"]:
+            raise ValueError(f"period {period} not supported")
         temp_dict = xtdata.get_local_data(
             stock_list=[stock_code],
             start_time=start_time,
             end_time=end_time,
             period=period,
-            field_list=[
-                "open",
-                "high",
-                "low",
-                "close",
-                "volume",
-                "amount",
-                "settelementPrice",
-                "openInterest",
-                "preClose",
-                "suspendFlag",
-            ],
+            field_list=self.filed_list,
         )
-        result = []
-        for key, df in temp_dict.items():
-            df_temp = df.copy().reset_index()
-            df_temp.rename(columns={"index": "trade_time"}, inplace=True)
-            df_temp["trade_time"] = pd.to_datetime(df_temp["trade_time"])
-            df_temp["ticker_symbol"] = key
-            df_temp["date"] = df_temp["trade_time"].dt.date
-            df_temp["year_month"] = df_temp["trade_time"].dt.strftime("%Y%m")
-            result.append(df_temp)
-        result = pd.concat(result)
+        result = self.__change_local_data_dict_into_df(temp_dict)
 
         if result.empty:
             raise ValueError(f"{stock_code}数据为空")
@@ -127,6 +149,22 @@ class QmtData:
         result.rename(columns=rename_col, inplace=True)
         return result
 
+    def __write_to_ftr_helper(self, df: pd.DataFrame, maked_path: str) -> None:
+        os.makedirs(maked_path, exist_ok=True)
+        for year_month, df_grouped in df.groupby("year_month"):
+            file_path = os.path.join(maked_path, f"{year_month}.parquet")
+            check_conditin = os.path.exists(file_path)
+            df_result = df_grouped[self.col_need]
+            if check_conditin:
+                df_old = pd.read_parquet(file_path)
+                df_result = pd.concat([df_old, df_result])
+                df_result.sort_values(by=["trade_time"], inplace=True)
+                df_result.drop_duplicates(
+                    subset=["trade_time", "ticker_symbol"], inplace=True
+                )
+            df_result.to_parquet(file_path, compression="snappy")
+
+    @dask.delayed
     def write_to_ftr(
         self,
         start_time: str,
@@ -134,22 +172,7 @@ class QmtData:
         stock_code: str,
         period: str = "1m",
         root_path: str = "D:/qmt_datadir/",
-    ):
-        col_need = [
-            "trade_time",
-            "ticker_symbol",
-            "open",
-            "high",
-            "low",
-            "close",
-            "volume",
-            "amount",
-            "settelement_price",
-            "open_interest",
-            "preclose",
-            "suspend_flag",
-        ]
-
+    ) -> dict:
         try:
             df = self.get_local_data(
                 start_time=start_time,
@@ -158,19 +181,7 @@ class QmtData:
                 period=period,
             )
             maked_path = os.path.join(root_path, period, stock_code)
-            os.makedirs(maked_path, exist_ok=True)
-            for year_month, df_grouped in df.groupby("year_month"):
-                file_path = os.path.join(maked_path, f"{year_month}.parquet")
-                check_conditin = os.path.exists(file_path)
-                df_result = df_grouped[col_need]
-                if check_conditin:
-                    df_old = pd.read_parquet(file_path)
-                    df_result = pd.concat([df_old, df_result])
-                    df_result.sort_values(by=["trade_time"], inplace=True)
-                    df_result.drop_duplicates(
-                        subset=["trade_time", "ticker_symbol"], inplace=True
-                    )
-                df_result.to_parquet(file_path, compression="snappy")
+            self.__write_to_ftr_helper(df, maked_path)
             start_date_rocorded = df.date.min().strftime("%Y%m%d")
             end_date_rocorded = df.date.max().strftime("%Y%m%d")
             record = {
@@ -190,22 +201,29 @@ class QmtData:
         end_time: str,
         stock_list: list = None,
         period: str = "1m",
-        n_jobs: int = -1,
-    ):
+        root_path="D:/qmt_datadir/",
+    ) -> list:
+        client = Client(n_workers=psutil.cpu_count(logical=False), threads_per_worker=2)
+        print(client)
+        print(client.dashboard_link)
         if stock_list is None:
             stock_list = self.get_tickers()["ticker"].tolist()
-
-        # Execute the tasks in parallel with tqdm for progress tracking
-
-        return Parallel(n_jobs=n_jobs)(
-            delayed(self.write_to_ftr)(
-                stock_code=ticker,
+        delayed_tasks = [
+            self.write_to_ftr(
                 start_time=start_time,
                 end_time=end_time,
+                stock_code=stock_code,
                 period=period,
+                root_path=root_path,
             )
-            for ticker in stock_list
-        )
+            for stock_code in stock_list
+        ]
+
+        # Use ProgressBar for progress tracking
+        with ProgressBar():
+            results = dask.compute(*delayed_tasks)
+        client.close()
+        return results
 
 
 if __name__ == "__main__":
