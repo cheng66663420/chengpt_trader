@@ -230,12 +230,12 @@ if __name__ == "__main__":
     import datetime
 
     qmt_data = QmtData()
-    ticker_df = qmt_data.get_tickers()
+    ticker_df = qmt_data.get_tickers(["沪深ETF"])
     stock_list = ticker_df["ticker"].tolist()
     stock_list.sort()
     today = datetime.datetime.today().strftime("%Y%m%d")
-    start_time = today
-    end_time = today
+    start_time = "20240819"
+    end_time = "20240819"
     for period in ["1m", "5m", "1d"]:
         qmt_data.download_data(
             start_time=start_time,
