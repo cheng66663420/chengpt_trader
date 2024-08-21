@@ -8,6 +8,7 @@ import dask
 from dask.distributed import Client
 from dask.diagnostics import ProgressBar
 import psutil
+import shutil
 
 tool_trade_date_hist_sina_df = ak.tool_trade_date_hist_sina()
 TRADE_DATE_LIST = tool_trade_date_hist_sina_df["trade_date"].tolist()
@@ -225,6 +226,46 @@ class QmtData:
         client.close()
         return results
 
+    def download_adjust_factor(
+        self,
+        stock_list: list = None,
+        start_time: str = None,
+        end_time: str = None,
+        root_path="D:/qmt_datadir/",
+    ) -> None:
+        for ticker in tqdm(stock_list):
+            df = xtdata.get_divid_factors(
+                ticker, start_time=start_time, end_time=end_time
+            )
+            if df.empty:
+                continue
+            df = (
+                df.reset_index()
+                .rename(columns={"index": "trade_time"})
+                .drop(columns=["time"])
+            )
+            df["trade_time"] = pd.to_datetime(df["trade_time"])
+
+            save_root_path = os.path.join(root_path, "adjust_factor")
+            save_path = os.path.join(save_root_path, f"{ticker}.parquet")
+            os.makedirs(save_root_path, exist_ok=True)
+            if os.path.exists(save_path):
+                df_old = pd.read_parquet(save_path)
+                df = pd.concat([df_old, df])
+                df.drop_duplicates(subset=["trade_time"], inplace=True)
+                df.sort_values(by=["trade_time"], inplace=True)
+            df.to_parquet(save_path, compression="snappy")
+
+    def remove_qmt_datadir(
+        self, qmt_mini_datadir="D:/兴业证券SMT-Q/userdata_mini/datadir"
+    ) -> None:
+        market_list = ["SH", "SZ"]
+        for market in market_list:
+            market_path = os.path.join(qmt_mini_datadir, market)
+            if os.path.exists(market_path):
+                shutil.rmtree(market_path)
+                print(f"删除 {market_path}成功")
+
 
 if __name__ == "__main__":
     import datetime
@@ -236,6 +277,11 @@ if __name__ == "__main__":
     today = datetime.datetime.today().strftime("%Y%m%d")
     start_time = today
     end_time = today
+    # qmt_data.remove_qmt_datadir()
+
+    qmt_data.download_adjust_factor(
+        stock_list=stock_list, start_time=start_time, end_time=end_time
+    )
     for period in ["1m", "5m", "1d"]:
         qmt_data.download_data(
             start_time=start_time,

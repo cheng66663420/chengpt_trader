@@ -102,14 +102,14 @@ class DrawdownStrategy(bt.Strategy):
 
 class DynamicGridStrategy(bt.Strategy):
     params = (
-        ("initial_position", 0.6),  # 初始仓位60%
+        ("initial_position", 0.7),  # 初始仓位60%
         ("up_threshold", 0.1),  # 上涨10%
         ("down_threshold", -0.05),  # 下跌5%
         ("up_adjustment", 0.1),  # 上涨时调整10%
-        ("down_adjustment", 0.06),  # 下跌时调整5%
-        ("min_position", 0.6),  # 最低仓位50%
+        ("down_adjustment", 0.05),  # 下跌时调整5%
+        ("min_position", 0.7),  # 最低仓位50%
         ("max_position", 1),  # 最高仓位100%
-        ("drawdown_threshold", -0.10),  # 回撤阈值10%
+        ("drawdown_threshold", -0.11),  # 回撤阈值10%
     )
 
     def __init__(self):
@@ -119,10 +119,16 @@ class DynamicGridStrategy(bt.Strategy):
         self.last_price = self.dataclose[0]
         self.pct_return = []
         self.first_drawndown_break_flag = True
+        self.init = True
 
     def next(self):
         if self.order:
             return
+
+        if self.init:
+            self.order_target_percent(target=self.params.initial_position)
+            self.init = False
+
         pct_return = np.log(self.dataclose[0] / self.dataclose[-1])
         self.pct_return.append(pct_return)
         # 计算滚动高点和当前回撤
@@ -134,6 +140,8 @@ class DynamicGridStrategy(bt.Strategy):
         current_price = self.dataclose[0]
         price_change = (current_price - self.last_price) / self.last_price
         self.position_size = self.get_current_percentage_position()
+        # if self.position_size == 0:
+        #     self.order_target_percent(target=self.position_size)
 
         # 价格变动涨幅大于上涨阈值,减仓
         if price_change >= self.params.up_threshold:
@@ -143,12 +151,7 @@ class DynamicGridStrategy(bt.Strategy):
             else:
                 change_percent_position = -self.params.up_adjustment
                 self.last_price = current_price
-            if drawdown == 0:
-                self.first_drawndown_break_flag = True
-            else:
-                self.first_drawndown_break_flag = False
-
-        # 价格变动跌幅小于下跌阈值且回撤小于回撤阈值, 加仓
+            self.first_drawndown_break_flag = drawdown == 0
         elif (
             price_change <= self.params.down_threshold
             and drawdown <= self.params.drawdown_threshold
@@ -162,7 +165,7 @@ class DynamicGridStrategy(bt.Strategy):
             else:
                 change_percent_position = self.params.down_adjustment
             self.last_price = current_price
-
+        # 仓位变动大于0.02%，则调整仓位
         if abs(change_percent_position) > 0.02:
             self.position_size += change_percent_position
             self.position_size = max(
@@ -170,10 +173,11 @@ class DynamicGridStrategy(bt.Strategy):
                 min(self.params.max_position, self.position_size),
             )
             self.order_target_percent(target=self.position_size)
-        self.log(
-            f"""回撤率{drawdown*100:.2f}%;仓位变动值{change_percent_position*100:.2f}%;结束仓位{self.position_size*100:.2f}%
-            """
-        )
+
+            self.log(
+                f"""回撤率{drawdown*100:.2f}%;仓位变动值{change_percent_position*100:.2f}%;结束仓位{self.position_size*100:.2f}%
+                """
+            )
 
     def get_current_percentage_position(self):
         # 获取当前持仓
@@ -183,10 +187,7 @@ class DynamicGridStrategy(bt.Strategy):
         # 账户总价值
         total_value = self.broker.getvalue()
         # 当前百分比仓位
-        if total_value > 0:
-            return current_value / total_value
-        else:
-            return 0
+        return current_value / total_value if total_value > 0 else 0
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -209,32 +210,9 @@ class DynamicGridStrategy(bt.Strategy):
         print(f"{dt.isoformat()}, {txt}")
 
 
-def run_strategy():
+def run_strategy(df: pd.DataFrame):
     cerebro = bt.Cerebro()
-    df = pd.read_excel("f:/159941.SZ.xlsx")
-    # df.rename(
-    #     columns={
-    #         "日期": "trade_time",
-    #         "开盘": "open",
-    #         "收盘": "close",
-    #         "最高": "high",
-    #         "最低": "low",
-    #         "成交量": "volume",
-    #         "成交额": "amount",
-    #     },
-    #     inplace=True,
-    # )
-    df["trade_time"] = pd.to_datetime(df["trade_time"])
-    # # 添加数据
-    # df = get_quote_data(
-    #     ticker_symbol="159941.SZ",
-    #     start_time="20140101",
-    #     end_time="20240819",
-    #     period="1d",
-    # )
-    cols = ["open", "high", "low", "close", "volume", "amount"]
-    df.set_index("trade_time", inplace=True)
-    df = df[cols]
+    # df = pd.read_excel("f:/H20269.CSI.xlsx")
 
     data = bt.feeds.PandasData(dataname=df)
     cerebro.adddata(data)
@@ -256,12 +234,39 @@ def run_strategy():
     # 运行回测
     results = cerebro.run()
 
-    # for analyzer in results[0].analyzers:
-    #     analyzer.print()
+    for analyzer in results[0].analyzers:
+        analyzer.print()
     cerebro.plot()
     # 打印最终资金
     print(f"Final Portfolio Value: {cerebro.broker.getvalue():.2f}")
 
 
 if __name__ == "__main__":
-    run_strategy()
+    df = ak.fund_etf_hist_em(
+        symbol="159941", start_date="20100101", end_date="20240821", adjust="hfq"
+    )
+    df.rename(
+        columns={
+            "日期": "trade_time",
+            "开盘": "open",
+            "收盘": "close",
+            "最高": "high",
+            "最低": "low",
+            "成交量": "volume",
+            "成交额": "amount",
+        },
+        inplace=True,
+    )
+    df["trade_time"] = pd.to_datetime(df["trade_time"])
+    # df = df.query("trade_time >= '20170101'")
+    # # 添加数据
+    # df = get_quote_data(
+    #     ticker_symbol="159941.SZ",
+    #     start_time="20140101",
+    #     end_time="20240819",
+    #     period="1d",
+    # )
+    cols = ["open", "high", "low", "close", "volume", "amount"]
+    df.set_index("trade_time", inplace=True)
+    df = df[cols]
+    run_strategy(df=df)
