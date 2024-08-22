@@ -271,7 +271,7 @@ if __name__ == "__main__":
     import datetime
 
     qmt_data = QmtData()
-    ticker_df = qmt_data.get_tickers(["沪深ETF"])
+    ticker_df = qmt_data.get_tickers()
     stock_list = ticker_df["ticker"].tolist()
     stock_list.sort()
     today = datetime.datetime.today().strftime("%Y%m%d")
