@@ -50,7 +50,7 @@ def split_sigle_parquet_file(input_path, output_path):
 
 
 def split_parquet_multi_files():
-    input_root_path = "g:\\qmt_datadir"
+    input_root_path = "f:\\qmt_datadir"
     output_root_path = "d:\\qmt_datadir"
     periods = ["1m"]
 
