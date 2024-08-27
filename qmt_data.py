@@ -38,6 +38,23 @@ def check_missing_dates_decorator(func):
     return wrapper
 
 
+def get_trade_date():
+    return pd.DataFrame(xtdata.get_trading_dates("SH"), columns=["time"])
+
+
+def get_div_factors(ticker, end_time):
+    df = xtdata.get_divid_factors(ticker, start_time="20000101", end_time=end_time)
+    if df.empty:
+        return None
+    dates_df = get_trade_date()
+    dates_df = dates_df[dates_df["time"] >= df.time.min()]
+    df = df.merge(dates_df, on="time", how="right")
+    df["time"] = df["time"].apply(lambda x: datetime.datetime.fromtimestamp(x / 1000))
+    df.insert(1, "ticker_symbol", ticker)
+    df.reset_index(drop=True, inplace=True)
+    return df.fillna(method="ffill")
+
+
 class QmtData:
     """
     qmt自动登录
@@ -228,28 +245,35 @@ class QmtData:
         end_time: str = None,
         root_path="D:/qmt_datadir/",
     ) -> None:
-        for ticker in tqdm(stock_list):
-            df = xtdata.get_divid_factors(
-                ticker, start_time=start_time, end_time=end_time
-            )
-            if df.empty:
-                continue
-            df = (
-                df.reset_index()
-                .rename(columns={"index": "trade_time"})
-                .drop(columns=["time"])
-            )
-            df["trade_time"] = pd.to_datetime(df["trade_time"])
+        factor_list = []
+        conn = duckdb.connect()
 
-            save_root_path = os.path.join(root_path, "adjust_factor")
-            save_path = os.path.join(save_root_path, f"{ticker}.parquet")
-            os.makedirs(save_root_path, exist_ok=True)
-            if os.path.exists(save_path):
-                df_old = pd.read_parquet(save_path)
-                df = pd.concat([df_old, df])
-                df.drop_duplicates(subset=["trade_time"], inplace=True)
-                df.sort_values(by=["trade_time"], inplace=True)
-            df.to_parquet(save_path, compression="snappy")
+        if start_time is None:
+            start_time = "20000101"
+        for ticker in tqdm(stock_list):
+            df = get_div_factors(ticker=ticker, end_time=end_time)
+            if df is None:
+                continue
+            df = df.query("time >= @start_time and time <= @end_time")
+            factor_list.append(df)
+        factor_df = pd.concat(factor_list)
+        print(factor_df)
+        factor_df["year_month"] = factor_df["time"].dt.strftime("%Y%m")
+        for year_month, df_grouped in factor_df.groupby("year_month"):
+            df_copy = df_grouped.copy()
+            df_copy.drop(columns=["year_month"], inplace=True)
+            if os.path.exists(
+                os.path.join(root_path, "adjust_factor", f"{year_month}.parquet")
+            ):
+                df_old = conn.execute(
+                    f"select * from '{os.path.join(root_path, 'adjust_factor', f'{year_month}.parquet')}'"
+                ).df()
+                df_copy = pd.concat([df_old, df_copy]).drop_duplicates(
+                    subset=["time", "ticker_symbol"], keep="last"
+                )
+            conn.execute(
+                f"copy df_copy to '{os.path.join(root_path, 'adjust_factor', f'{year_month}.parquet')}' (format 'parquet')"
+            )
 
     def remove_qmt_datadir(
         self, qmt_mini_datadir="D:/兴业证券SMT-Q/userdata_mini/datadir"
@@ -275,28 +299,28 @@ if __name__ == "__main__":
     # qmt_data.remove_qmt_datadir()
 
     qmt_data.download_adjust_factor(
-        stock_list=stock_list, start_time=start_time, end_time=end_time
+        stock_list=stock_list, start_time="20050101", end_time=end_time
     )
-    for period in ["1m", "5m", "1d"]:
-        qmt_data.download_data(
-            start_time=start_time,
-            end_time=end_time,
-            period=period,
-            stock_list=stock_list,
-        )
-        record = qmt_data.write_to_ftr_parallel(
-            stock_list=stock_list,
-            start_time=start_time,
-            end_time=end_time,
-            period=period,
-        )
-        record_df = pd.DataFrame(record)
-        os.makedirs(
-            "D:/qmt_datadir/logging/",
-            exist_ok=True,
-        )
-        record_df.to_excel(
-            f"D:/qmt_datadir/logging/{end_time}_record_{period}.xlsx",
-            index=False,
-            engine="openpyxl",
-        )
+    # for period in ["1m", "5m", "1d"]:
+    #     qmt_data.download_data(
+    #         start_time=start_time,
+    #         end_time=end_time,
+    #         period=period,
+    #         stock_list=stock_list,
+    #     )
+    #     record = qmt_data.write_to_ftr_parallel(
+    #         stock_list=stock_list,
+    #         start_time=start_time,
+    #         end_time=end_time,
+    #         period=period,
+    #     )
+    #     record_df = pd.DataFrame(record)
+    #     os.makedirs(
+    #         "D:/qmt_datadir/logging/",
+    #         exist_ok=True,
+    #     )
+    #     record_df.to_excel(
+    #         f"D:/qmt_datadir/logging/{end_time}_record_{period}.xlsx",
+    #         index=False,
+    #         engine="openpyxl",
+    #     )
