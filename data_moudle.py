@@ -4,6 +4,7 @@ import dask.dataframe as dd
 from dask import delayed
 import dask
 from numba import njit
+import duckdb
 
 
 def get_quote_data(
@@ -43,27 +44,35 @@ def get_quote_data(
         如果指定的文件不存在，则抛出此异常
     """
     file_path = os.path.join(data_dir, period, ticker_symbol)
+
+    print(file_path)
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
 
     start_time_year_month = pd.to_datetime(start_time).strftime("%Y%m")
     end_time_year_month = pd.to_datetime(end_time).strftime("%Y%m")
     file_list = [
-        file
+        os.path.join(file_path, file)
         for file in os.listdir(file_path)
         if start_time_year_month <= file[:6] <= end_time_year_month
     ]
+    # 连接到 DuckDB
+    start_time = pd.to_datetime(start_time)
+    end_time = pd.to_datetime(end_time)
 
-    @delayed
-    def read_parquet(file):
-        return pd.read_parquet(os.path.join(file_path, file))
+    con = duckdb.connect()
+    duck_query = f"""
+    SELECT 
+        *
+    FROM 
+        read_parquet({file_list})
+    WHERE 
+        trade_time >= '{start_time}' AND trade_time < '{end_time}'
+        order by trade_time
+    """
+    result_df = con.execute(duck_query).df()
 
-    delayed_dfs = [read_parquet(file) for file in file_list]
-    dask_df = dd.from_delayed(delayed_dfs)
-
-    result_df = dask_df[
-        (dask_df["trade_time"] >= start_time) & (dask_df["trade_time"] <= end_time)
-    ].compute()
+    print(result_df)
     result_df = result_df.sort_values(by="trade_time")
     result_df = process_adjust(
         df=result_df, ticker_symbol=ticker_symbol, adjust=adjust, data_dir=data_dir
@@ -283,8 +292,8 @@ if __name__ == "__main__":
         ticker_symbol="159941.SZ",
         start_time="20240202",
         end_time="20240601",
-        period="1d",
-        adjust=None,
+        period="1m",
+        adjust="hfq",
         data_dir="D:/qmt_datadir",
     )
     print(df)

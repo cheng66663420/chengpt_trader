@@ -1,14 +1,12 @@
-import dask.delayed
 from xtquant import xtdata
 import pandas as pd
 from tqdm import tqdm
 import os
 import akshare as ak
-import dask
-from dask.distributed import Client
-from dask.diagnostics import ProgressBar
-import psutil
+
 import shutil
+import duckdb
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 tool_trade_date_hist_sina_df = ak.tool_trade_date_hist_sina()
 TRADE_DATE_LIST = tool_trade_date_hist_sina_df["trade_date"].tolist()
@@ -152,20 +150,21 @@ class QmtData:
 
     def __write_to_ftr_helper(self, df: pd.DataFrame, maked_path: str) -> None:
         os.makedirs(maked_path, exist_ok=True)
+        conn = duckdb.connect()
+
         for year_month, df_grouped in df.groupby("year_month"):
             file_path = os.path.join(maked_path, f"{year_month}.parquet")
             check_conditin = os.path.exists(file_path)
             df_result = df_grouped[self.col_need]
             if check_conditin:
-                df_old = pd.read_parquet(file_path)
+                df_old = conn.execute(f"SELECT * FROM '{file_path}'").df()
                 df_result = pd.concat([df_old, df_result])
                 df_result.sort_values(by=["trade_time"], inplace=True)
                 df_result.drop_duplicates(
                     subset=["trade_time", "ticker_symbol"], inplace=True
                 )
-            df_result.to_parquet(file_path, compression="snappy")
+            conn.execute(f"copy df_result to '{file_path}' (format 'parquet')")
 
-    @dask.delayed
     def write_to_ftr(
         self,
         start_time: str,
@@ -204,26 +203,22 @@ class QmtData:
         period: str = "1m",
         root_path="D:/qmt_datadir/",
     ) -> list:
-        client = Client(n_workers=psutil.cpu_count(logical=False), threads_per_worker=2)
-        print(client)
-        print(client.dashboard_link)
         if stock_list is None:
             stock_list = self.get_tickers()["ticker"].tolist()
-        delayed_tasks = [
-            self.write_to_ftr(
-                start_time=start_time,
-                end_time=end_time,
-                stock_code=stock_code,
-                period=period,
-                root_path=root_path,
-            )
-            for stock_code in stock_list
-        ]
 
-        # Use ProgressBar for progress tracking
-        with ProgressBar():
-            results = dask.compute(*delayed_tasks)
-        client.close()
+        with ProcessPoolExecutor() as executor:
+            futures = [
+                executor.submit(
+                    self.write_to_ftr,
+                    start_time,
+                    end_time,
+                    stock_code,
+                    period,
+                    root_path,
+                )
+                for stock_code in stock_list
+            ]
+            results = [future.result() for future in as_completed(futures)]
         return results
 
     def download_adjust_factor(
