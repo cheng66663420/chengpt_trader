@@ -52,7 +52,7 @@ def get_div_factors(ticker, end_time):
     df["time"] = df["time"].apply(lambda x: datetime.datetime.fromtimestamp(x / 1000))
     df.insert(1, "ticker_symbol", ticker)
     df.reset_index(drop=True, inplace=True)
-    return df.fillna(method="ffill")
+    return df.ffill()
 
 
 class QmtData:
@@ -299,28 +299,28 @@ if __name__ == "__main__":
     # qmt_data.remove_qmt_datadir()
 
     qmt_data.download_adjust_factor(
-        stock_list=stock_list, start_time="20050101", end_time=end_time
+        stock_list=stock_list, start_time=start_time, end_time=end_time
     )
-    # for period in ["1m", "5m", "1d"]:
-    #     qmt_data.download_data(
-    #         start_time=start_time,
-    #         end_time=end_time,
-    #         period=period,
-    #         stock_list=stock_list,
-    #     )
-    #     record = qmt_data.write_to_ftr_parallel(
-    #         stock_list=stock_list,
-    #         start_time=start_time,
-    #         end_time=end_time,
-    #         period=period,
-    #     )
-    #     record_df = pd.DataFrame(record)
-    #     os.makedirs(
-    #         "D:/qmt_datadir/logging/",
-    #         exist_ok=True,
-    #     )
-    #     record_df.to_excel(
-    #         f"D:/qmt_datadir/logging/{end_time}_record_{period}.xlsx",
-    #         index=False,
-    #         engine="openpyxl",
-    #     )
+    for period in ["1m", "5m", "1d"]:
+        qmt_data.download_data(
+            start_time=start_time,
+            end_time=end_time,
+            period=period,
+            stock_list=stock_list,
+        )
+        record = qmt_data.write_to_ftr_parallel(
+            stock_list=stock_list,
+            start_time=start_time,
+            end_time=end_time,
+            period=period,
+        )
+        record_df = pd.DataFrame(record)
+        os.makedirs(
+            "D:/qmt_datadir/logging/",
+            exist_ok=True,
+        )
+        record_df.to_excel(
+            f"D:/qmt_datadir/logging/{end_time}_record_{period}.xlsx",
+            index=False,
+            engine="openpyxl",
+        )

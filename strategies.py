@@ -302,7 +302,7 @@ if __name__ == "__main__":
     print(ticker[ticker["代码"].str.contains("TQQQ")])
 
     df = ak.stock_us_hist(
-        symbol="105.TQQQ", start_date="20100101", end_date="20240826", adjust="hfq"
+        symbol="105.TQQQ", start_date="20100101", end_date="20240827", adjust="hfq"
     )
     df.rename(
         columns={
