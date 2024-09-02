@@ -62,3 +62,9 @@ def RSRS(low: pd.Series, high: pd.Series, N: int = 18, M: int = 600):
     beta = pd.Series(pad, index=low.index)
 
     return beta
+
+
+if __name__ == "__main__":
+    a = range(1000)
+    a = np.array(a)
+    print(rolling_window(a, 20))
