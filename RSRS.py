@@ -67,4 +67,6 @@ def RSRS(low: pd.Series, high: pd.Series, N: int = 18, M: int = 600):
 if __name__ == "__main__":
     a = range(1000)
     a = np.array(a)
-    print(rolling_window(a, 20))
+    y = rolling_window(a, 20)
+    y_ = np.array([i.reshape(20, 1) for i in y])
+    print(y.shape[1])
