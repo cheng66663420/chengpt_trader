@@ -4,7 +4,9 @@ import pandas as pd
 import akshare as ak
 
 
-def run_strategy(df: pd.DataFrame, strategy_list: list[bt.Strategy]) -> None:
+def run_strategy(
+    df: pd.DataFrame, strategy_list: list[bt.Strategy], if_plot: bool = True
+) -> None:
     cerebro = bt.Cerebro()
     data = bt.feeds.PandasData(dataname=df)
     cerebro.adddata(data)
@@ -28,14 +30,17 @@ def run_strategy(df: pd.DataFrame, strategy_list: list[bt.Strategy]) -> None:
     for result in results:
         for analyzer in result.analyzers:
             analyzer.print()
-    cerebro.plot()
+    if if_plot:
+        # 绘制回测结果
+        cerebro.plot()
     # 打印最终资金
     print(f"Final Portfolio Value: {cerebro.broker.getvalue():.2f}")
+    # 打印回测结果
 
 
 if __name__ == "__main__":
     df = ak.fund_etf_hist_em(
-        symbol="159941", start_date="20100101", end_date="20240821", adjust="hfq"
+        symbol="159941", start_date="20100101", end_date="20240902", adjust="hfq"
     )
     df.rename(
         columns={

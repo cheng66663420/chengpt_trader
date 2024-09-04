@@ -64,9 +64,9 @@ class DrawdownStrategy(bt.Strategy):
         # 计算目标仓位与当前仓位的差异
         target_position_size = self.buy_signal
         position_change = abs(target_position_size - current_percentage)
-        self.log(
-            f"收盘价{current_close};最高价{lookback_high};Current Drawdown: {drawdown:.2f}%"
-        )
+        # self.log(
+        #     f"收盘价{current_close};最高价{lookback_high};Current Drawdown: {drawdown:.2f}%"
+        # )
         # 如果仓位变动小于5%，则不调整仓位
         if position_change < 0.1:
             return  # 不调整仓位
@@ -268,9 +268,13 @@ class DifferentiatedTrendFollow(bt.Strategy):
             + max(0, self.cross_4[0])
         ) / 4
 
-        self.log(f"信号{position:.2f}")
-
-        self.order_target_percent(target=position)
+        if abs(self.get_current_percentage_position() - position) > 0.02:
+            self.order_target_percent(target=position)
+            self.log(
+                f"信号{position:.2f},仓位变动{abs(self.get_current_percentage_position() - position)*100:.2f}%"
+            )
+        else:
+            self.log(f"信号{position:.2f},无需调整仓位")
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -292,18 +296,31 @@ class DifferentiatedTrendFollow(bt.Strategy):
         dt = dt or self.datas[0].datetime.date(0)
         print(f"{dt.isoformat()}, {txt}")
 
+    def get_current_percentage_position(self):
+        # 获取当前持仓
+        position = self.broker.getposition(self.datas[0])
+        # 当前持仓的价值
+        current_value = position.size * self.dataclose[0]
+        # 账户总价值
+        total_value = self.broker.getvalue()
+        # 当前百分比仓位
+        return current_value / total_value if total_value > 0 else 0
+
 
 if __name__ == "__main__":
     import pandas as pd
     import akshare as ak
     from trader import run_strategy
 
-    ticker = ak.stock_us_spot_em()
-    print(ticker[ticker["代码"].str.contains("TQQQ")])
+    # ticker = ak.stock_us_spot_em()
+    # print(ticker[ticker["代码"].str.contains("TQQQ")])
 
     df = ak.stock_us_hist(
-        symbol="105.TQQQ", start_date="20100101", end_date="20240827", adjust="hfq"
+        symbol="105.TQQQ", start_date="20100101", end_date="20240903", adjust="hfq"
     )
+    # df = ak.fund_etf_hist_em(
+    #     symbol="159941", start_date="20100101", end_date="20240902", adjust="hfq"
+    # )
     df.rename(
         columns={
             "日期": "trade_time",
@@ -328,4 +345,4 @@ if __name__ == "__main__":
     cols = ["open", "high", "low", "close", "volume", "amount"]
     df.set_index("trade_time", inplace=True)
     df = df[cols]
-    run_strategy(df=df, strategy_list=[DifferentiatedTrendFollow])
+    run_strategy(df=df, strategy_list=[DifferentiatedTrendFollow], if_plot=False)
