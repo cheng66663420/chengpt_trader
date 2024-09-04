@@ -42,10 +42,7 @@ class DrawdownStrategy(bt.Strategy):
         # 账户总价值
         total_value = self.broker.getvalue()
         # 当前百分比仓位
-        if total_value > 0:
-            current_percentage = current_value / total_value
-        else:
-            current_percentage = 0
+        current_percentage = current_value / total_value if total_value > 0 else 0
         # self.log(f"Current Position Size: {current_percentage*100:.2f}%")
 
         if self.buy_signal is False:
