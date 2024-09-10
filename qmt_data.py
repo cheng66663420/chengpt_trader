@@ -294,13 +294,13 @@ if __name__ == "__main__":
     stock_list = ticker_df["ticker"].tolist()
     stock_list.sort()
     today = datetime.datetime.today().strftime("%Y%m%d")
-    start_time = "20240905"
+    start_time = today
     end_time = today
     # qmt_data.remove_qmt_datadir()
 
-    # qmt_data.download_adjust_factor(
-    #     stock_list=stock_list, start_time=start_time, end_time=end_time
-    # )
+    qmt_data.download_adjust_factor(
+        stock_list=stock_list, start_time=start_time, end_time=end_time
+    )
     for period in ["1m", "5m", "1d"]:
         qmt_data.download_data(
             start_time=start_time,
