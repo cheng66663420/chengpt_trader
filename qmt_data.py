@@ -296,7 +296,7 @@ if __name__ == "__main__":
     today = datetime.datetime.today().strftime("%Y%m%d")
     start_time = today
     end_time = today
-    # qmt_data.remove_qmt_datadir()
+    qmt_data.remove_qmt_datadir()
 
     qmt_data.download_adjust_factor(
         stock_list=stock_list, start_time=start_time, end_time=end_time
