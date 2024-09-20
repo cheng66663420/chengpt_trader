@@ -183,6 +183,7 @@ def process_forward(quote_datas: pd.DataFrame, divid_datas: pd.DataFrame):
     divid_datas.drop(columns=["time", "ticker_symbol"], inplace=True)
     cols = quote_datas.columns
     df = quote_datas.merge(divid_datas, how="left", left_index=True, right_index=True)
+    df.fillna(0, inplace=True)
     for col in ["open", "high", "low", "close"]:
         df[col] = calc_front_numba(
             df[col],
@@ -203,6 +204,7 @@ def process_backward(quote_datas, divid_datas):
     divid_datas.drop(columns=["time", "ticker_symbol"], inplace=True)
     cols = quote_datas.columns
     df = quote_datas.merge(divid_datas, how="left", left_index=True, right_index=True)
+    df.fillna(0, inplace=True)
 
     for col in ["open", "high", "low", "close"]:
         df[col] = calc_back_numba(
@@ -266,9 +268,9 @@ if __name__ == "__main__":
     df = get_quote_data(
         ticker_symbol="159941.SZ",
         start_time="20000101",
-        end_time="20240918",
+        end_time="20240921",
         period="1m",
         adjust="hfq",
         data_dir="D:/qmt_datadir",
     )
-    print(df)
+    df.to_excel("d:/159941.xlsx", index=False)

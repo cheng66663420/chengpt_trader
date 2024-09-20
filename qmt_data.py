@@ -43,7 +43,7 @@ def get_trade_date():
 
 
 def get_div_factors(ticker, end_time):
-    df = xtdata.get_divid_factors(ticker, start_time="20000101", end_time=end_time)
+    df = xtdata.get_divid_factors(ticker, start_time="19900101", end_time=end_time)
     if df.empty:
         return None
     dates_df = get_trade_date()
@@ -259,7 +259,6 @@ class QmtData:
             df["ticker_symbol"] = ticker
             factor_list.append(df)
         factor_df = pd.concat(factor_list)
-        print(factor_df)
         factor_df["year_month"] = factor_df["time"].dt.strftime("%Y%m")
         for year_month, df_grouped in factor_df.groupby("year_month"):
             df_copy = df_grouped.copy()
@@ -296,7 +295,7 @@ if __name__ == "__main__":
     stock_list = ticker_df["ticker"].tolist()
     stock_list.sort()
     today = datetime.datetime.today().strftime("%Y%m%d")
-    start_time = today
+    start_time = "20240918"
     end_time = today
     qmt_data.remove_qmt_datadir()
 
