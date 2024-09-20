@@ -56,7 +56,8 @@ def get_quote_data(
     SELECT 
         *
     FROM 
-        read_parquet('{file_path}/*')
+        read_parquet('{file_path}/*.parquet', union_by_name=True)
+
     WHERE 
         1=1
         and trade_time between '{start_time}' and '{end_time}'
@@ -151,7 +152,8 @@ def get_divid_factors(
     SELECT 
         *
     FROM 
-        read_parquet('{file_path}/*')
+        read_parquet('{file_path}/*.parquet')
+
     WHERE 
         1=1
         AND time between '{start_time}' and '{end_time}'
