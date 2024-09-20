@@ -252,9 +252,11 @@ class QmtData:
             start_time = "20000101"
         for ticker in tqdm(stock_list):
             df = get_div_factors(ticker=ticker, end_time=end_time)
-            if df is None:
+            if df is None or df.empty:
                 continue
             df = df.query("time >= @start_time and time <= @end_time")
+
+            df["ticker_symbol"] = ticker
             factor_list.append(df)
         factor_df = pd.concat(factor_list)
         print(factor_df)

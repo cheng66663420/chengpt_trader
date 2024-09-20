@@ -47,13 +47,6 @@ def get_quote_data(
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
 
-    start_time_year_month = pd.to_datetime(start_time).strftime("%Y%m")
-    end_time_year_month = pd.to_datetime(end_time).strftime("%Y%m")
-    file_list = [
-        os.path.join(file_path, file)
-        for file in os.listdir(file_path)
-        if start_time_year_month <= file[:6] <= end_time_year_month
-    ]
     # 连接到 DuckDB
     start_time = pd.to_datetime(start_time)
     end_time = pd.to_datetime(end_time)
@@ -63,13 +56,13 @@ def get_quote_data(
     SELECT 
         *
     FROM 
-        read_parquet({file_list})
+        read_parquet('{file_path}/*')
     WHERE 
-        trade_time >= '{start_time}' AND trade_time < '{end_time}'
+        1=1
+        and trade_time between '{start_time}' and '{end_time}'
         order by trade_time
     """
     result_df = con.execute(duck_query).df()
-    result_df = result_df.sort_values(by="trade_time")
     result_df = process_adjust(
         df=result_df,
         ticker_symbol=ticker_symbol,
@@ -132,7 +125,6 @@ def process_adjust(
             end_time=end_time,
             data_dir=data_dir,
         )
-        print(df)
         if adjust_factor is None:
             return df
         if adjust == "hfq":
@@ -140,7 +132,6 @@ def process_adjust(
         elif adjust == "qfq":
             return process_forward(df, adjust_factor)
         df.reset_index(drop=True, inplace=True)
-        print(df)
     return df
 
 
@@ -153,24 +144,17 @@ def get_divid_factors(
     if end_time is None:
         end_time = pd.to_datetime("today")
     start_time = pd.to_datetime(start_time)
-    start_time_year_month = pd.to_datetime(start_time).strftime("%Y%m")
-    end_time_year_month = pd.to_datetime(end_time).strftime("%Y%m")
     file_path = os.path.join(data_dir, "adjust_factor")
-    file_list = [
-        os.path.join(file_path, file)
-        for file in os.listdir(file_path)
-        if start_time_year_month <= file[:6] <= end_time_year_month
-    ]
+
     con = duckdb.connect()
     duck_query = f"""
     SELECT 
         *
     FROM 
-        read_parquet({file_list})
+        read_parquet('{file_path}/*')
     WHERE 
         1=1
-        AND time >= '{start_time}' 
-        AND time <= '{end_time}'
+        AND time between '{start_time}' and '{end_time}'
         AND ticker_symbol = '{ticker_symbol}'
     order by 
         time
@@ -229,7 +213,6 @@ def process_backward(quote_datas, divid_datas):
             df["stockBonus"],
             df["stockGift"],
         )
-        print(df)
     return df[cols].reset_index(drop=True)
 
 
@@ -282,10 +265,10 @@ def resample_stock_data(df: pd.DataFrame, resample_period: str = "30T") -> pd.Da
 if __name__ == "__main__":
     df = get_quote_data(
         ticker_symbol="159941.SZ",
-        start_time="20240202",
-        end_time="20240903",
+        start_time="20000101",
+        end_time="20240918",
         period="1m",
-        adjust="qfq",
+        adjust="hfq",
         data_dir="D:/qmt_datadir",
     )
     print(df)
