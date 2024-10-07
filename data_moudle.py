@@ -53,12 +53,23 @@ def get_quote_data(
 
     con = duckdb.connect()
     duck_query = f"""
-    SELECT 
-        *
-    FROM 
+    SELECT
+        trade_time,
+        ticker_symbol,
+        open,
+        high,
+        low,
+        close,
+        volume,
+        amount,
+        settelement_price,
+        open_interest,
+        preclose,
+        suspend_flag
+    FROM
         read_parquet('{file_path}/*.parquet', union_by_name=True)
 
-    WHERE 
+    WHERE
         1=1
         and trade_time between '{start_time}' and '{end_time}'
         order by trade_time
@@ -270,7 +281,7 @@ if __name__ == "__main__":
     df = get_quote_data(
         ticker_symbol="159941.SZ",
         start_time="20000101",
-        end_time="20240921",
+        end_time="20240924",
         period="1m",
         adjust="hfq",
         data_dir="D:/qmt_datadir",
