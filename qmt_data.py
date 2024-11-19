@@ -3,7 +3,7 @@ import pandas as pd
 from tqdm import tqdm
 import os
 import akshare as ak
-
+import datetime
 import shutil
 import duckdb
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -277,7 +277,7 @@ class QmtData:
             )
 
     def remove_qmt_datadir(
-        self, qmt_mini_datadir="D:/兴业证券SMT-Q/userdata_mini/datadir"
+        self, qmt_mini_datadir="D:/国金证券QMT交易端/userdata_mini/datadir"
     ) -> None:
         market_list = ["SH", "SZ"]
         for market in market_list:
@@ -288,40 +288,4 @@ class QmtData:
 
 
 if __name__ == "__main__":
-    import datetime
-
-    qmt_data = QmtData()
-    ticker_df = qmt_data.get_tickers()
-    stock_list = ticker_df["ticker"].tolist()
-    stock_list.sort()
-    today = datetime.datetime.today().strftime("%Y%m%d")
-    start_time = "20240918"
-    end_time = today
-    qmt_data.remove_qmt_datadir()
-
-    qmt_data.download_adjust_factor(
-        stock_list=stock_list, start_time=start_time, end_time=end_time
-    )
-    for period in ["1m", "5m", "1d"]:
-        qmt_data.download_data(
-            start_time=start_time,
-            end_time=end_time,
-            period=period,
-            stock_list=stock_list,
-        )
-        record = qmt_data.write_to_ftr_parallel(
-            stock_list=stock_list,
-            start_time=start_time,
-            end_time=end_time,
-            period=period,
-        )
-        record_df = pd.DataFrame(record)
-        os.makedirs(
-            "D:/qmt_datadir/logging/",
-            exist_ok=True,
-        )
-        record_df.to_excel(
-            f"D:/qmt_datadir/logging/{end_time}_record_{period}.xlsx",
-            index=False,
-            engine="openpyxl",
-        )
+    pass
