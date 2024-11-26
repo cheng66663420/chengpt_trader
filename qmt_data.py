@@ -1,12 +1,13 @@
-from xtquant import xtdata
-import pandas as pd
-from tqdm import tqdm
-import os
-import akshare as ak
 import datetime
+import os
 import shutil
+
+import akshare as ak
 import duckdb
-from concurrent.futures import ProcessPoolExecutor, as_completed
+import pandas as pd
+from joblib import Parallel, delayed
+from tqdm import tqdm
+from xtquant import xtdata
 
 tool_trade_date_hist_sina_df = ak.tool_trade_date_hist_sina()
 TRADE_DATE_LIST = tool_trade_date_hist_sina_df["trade_date"].tolist()
@@ -223,19 +224,16 @@ class QmtData:
         if stock_list is None:
             stock_list = self.get_tickers()["ticker"].tolist()
 
-        with ProcessPoolExecutor() as executor:
-            futures = [
-                executor.submit(
-                    self.write_to_ftr,
-                    start_time,
-                    end_time,
-                    stock_code,
-                    period,
-                    root_path,
-                )
-                for stock_code in stock_list
-            ]
-            results = [future.result() for future in as_completed(futures)]
+        results = Parallel(n_jobs=-1)(
+            delayed(self.write_to_ftr)(
+                start_time=start_time,
+                end_time=end_time,
+                stock_code=stock_code,
+                period=period,
+                root_path=root_path,
+            )
+            for stock_code in tqdm(stock_list)
+        )
         return results
 
     def download_adjust_factor(
@@ -256,7 +254,7 @@ class QmtData:
                 continue
             df = df.query("time >= @start_time and time <= @end_time")
 
-            df["ticker_symbol"] = ticker
+            df.loc[:, "ticker_symbol"] = ticker
             factor_list.append(df)
         factor_df = pd.concat(factor_list)
         factor_df["year_month"] = factor_df["time"].dt.strftime("%Y%m")
